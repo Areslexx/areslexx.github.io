@@ -185,6 +185,18 @@
       color: var(--muted);
     }
 
+    select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 0.5rem 0.65rem;
+      font-size: 0.95rem;
+      font-family: inherit;
+      min-width: 8rem;
+      cursor: pointer;
+    }
+
     input[type="date"],
     input[type="number"] {
       background: var(--bg);
@@ -233,6 +245,14 @@
     .subject-table .subtle-row td {
       color: var(--muted);
       font-size: 0.8rem;
+    }
+
+    .daily-subject-detail {
+      font-size: 0.74rem;
+      color: var(--muted);
+      padding-top: 0 !important;
+      padding-bottom: 0.4rem !important;
+      line-height: 1.6;
     }
 
     .subject-table .total-row td {
@@ -541,14 +561,18 @@
       </div>
 
       <div class="log-section">
-        <h3>记录今日刷题（不按科目）</h3>
+        <h3>记录今日刷题</h3>
         <p class="section-note">
-          计入当天总量与贡献图，但不拆到具体科目。需要按卷一/卷二学科统计时，请用「分类统计」。
+          选择科目后按科目计入分类统计；不选科目则记为未分科。均计入当天总量与贡献图。
         </p>
         <div class="form-row">
           <label>
             日期
             <input type="date" id="logDate" />
+          </label>
+          <label>
+            科目
+            <select id="logSubject"></select>
           </label>
           <label>
             真题（道）
@@ -557,8 +581,7 @@
           <label>
             快问快答（道）
             <input type="number" id="logKuaiwen" min="0" step="1" value="0" />
-          </label>
-          <button type="button" id="btnAdd">累加到该日</button>
+          </label>          <button type="button" id="btnAdd">累加到该日</button>
           <button type="button" class="secondary" id="btnExport">导出 JSON</button>
         </div>
       </div>
@@ -1382,12 +1405,38 @@
         }
         for (const key of keys) {
           const d = getDayData(state, key);
+          const n = normalizeDayEntry(state.days[key]);
+
           const tr = document.createElement("tr");
-          tr.innerHTML = `<td>${key}</td><td class="num-cell">${d.zhenti.toLocaleString("zh-CN")}</td><td class="num-cell">${d.kuaiwen.toLocaleString("zh-CN")}</td>`;
+          tr.innerHTML = '<td>' + key + '</td><td class="num-cell">' + d.zhenti.toLocaleString("zh-CN") + '</td><td class="num-cell">' + d.kuaiwen.toLocaleString("zh-CN") + '</td>';
           body.appendChild(tr);
+
+          // Build per-subject breakdown
+          const zParts = [];
+          const kParts = [];
+          for (const paper of ["objective1", "objective2"]) {
+            for (const subj of SUBJECTS[paper]) {
+              const z = (n.zhenti[paper] && n.zhenti[paper][subj]) || 0;
+              const k = (n.kuaiwen[paper] && n.kuaiwen[paper][subj]) || 0;
+              if (z > 0) zParts.push(subj + " " + z + "道");
+              if (k > 0) kParts.push(subj + " " + k + "道");
+            }
+          }
+
+          if (zParts.length > 0 || kParts.length > 0) {
+            let detail = "";
+            if (zParts.length > 0) detail += "真题：" + zParts.join(" · ");
+            if (kParts.length > 0) {
+              if (detail) detail += "　　";
+              detail += "快问快答：" + kParts.join(" · ");
+            }
+            const dt = document.createElement("tr");
+            dt.className = "subtle-row";
+            dt.innerHTML = '<td colspan="3" class="daily-subject-detail">' + detail + '</td>';
+            body.appendChild(dt);
+          }
         }
       }
-
       function renderSubjectPanel(state) {
         renderSubjectSummary(state);
         fillPriorSubjectInputs(state);
@@ -1408,6 +1457,26 @@
         setSyncStatus('saved');
 
         buildSubjectGrids();
+        // Build logSubject dropdown from SUBJECTS
+        (function() {
+          const sel = document.getElementById('logSubject');
+          sel.innerHTML = '';
+          const none = document.createElement('option');
+          none.value = '';
+          none.textContent = '（不分科）';
+          sel.appendChild(none);
+          for (const paper of ['objective1', 'objective2']) {
+            const grp = document.createElement('optgroup');
+            grp.label = PAPER_LABEL[paper];
+            for (const subj of SUBJECTS[paper]) {
+              const opt = document.createElement('option');
+              opt.value = paper + ':' + subj;
+              opt.textContent = subj;
+              grp.appendChild(opt);
+            }
+            sel.appendChild(grp);
+          }
+        })();
 
         const todayStr = padDate(new Date());
         $("logDate").value = todayStr;
@@ -1459,24 +1528,26 @@
 
         $("btnAdd").addEventListener("click", async () => {
           const dateVal = $("logDate").value;
-          if (!dateVal) {
-            showToast("请选择日期");
-            return;
-          }
+          if (!dateVal) { showToast("请选择日期"); return; }
           const z = Math.max(0, parseInt($("logZhenti").value, 10) || 0);
           const k = Math.max(0, parseInt($("logKuaiwen").value, 10) || 0);
-          if (z === 0 && k === 0) {
-            showToast("请输入大于 0 的数量");
-            return;
+          if (z === 0 && k === 0) { showToast("请输入大于 0 的数量"); return; }
+          const subjectVal = $("logSubject").value;
+          if (subjectVal) {
+            const colonIdx = subjectVal.indexOf(':');
+            const paper = subjectVal.substring(0, colonIdx);
+            const subj  = subjectVal.substring(colonIdx + 1);
+            if (z) addSubjectToDay(state, dateVal, 'zhenti',  paper, subj, z);
+            if (k) addSubjectToDay(state, dateVal, 'kuaiwen', paper, subj, k);
+          } else {
+            setDayData(state, dateVal, z, k);
           }
-          setDayData(state, dateVal, z, k);
           await saveState(state);
           refreshAll();
           $("logZhenti").value = "0";
           $("logKuaiwen").value = "0";
-          showToast(`已记录 ${dateVal}`);
+          showToast("已记录 " + dateVal);
         });
-
         $("btnAddSubjects").addEventListener("click", async () => {
           const dateVal = $("subjectLogDate").value;
           if (!dateVal) {
