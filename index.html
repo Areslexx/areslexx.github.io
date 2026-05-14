@@ -576,11 +576,11 @@
           </label>
           <label>
             真题（道）
-            <input type="number" id="logZhenti" min="0" step="1" value="0" />
+            <input type="number" id="logZhenti" step="1" value="0" />
           </label>
           <label>
             快问快答（道）
-            <input type="number" id="logKuaiwen" min="0" step="1" value="0" />
+            <input type="number" id="logKuaiwen" step="1" value="0" />
           </label>          <button type="button" id="btnAdd">累加到该日</button>
           <button type="button" class="secondary" id="btnExport">导出 JSON</button>
         </div>
@@ -1529,9 +1529,9 @@
         $("btnAdd").addEventListener("click", async () => {
           const dateVal = $("logDate").value;
           if (!dateVal) { showToast("请选择日期"); return; }
-          const z = Math.max(0, parseInt($("logZhenti").value, 10) || 0);
-          const k = Math.max(0, parseInt($("logKuaiwen").value, 10) || 0);
-          if (z === 0 && k === 0) { showToast("请输入大于 0 的数量"); return; }
+          const z = parseInt($("logZhenti").value, 10) || 0;
+          const k = parseInt($("logKuaiwen").value, 10) || 0;
+          if (z === 0 && k === 0) { showToast("请输入非零数量"); return; }
           const subjectVal = $("logSubject").value;
           if (subjectVal) {
             const colonIdx = subjectVal.indexOf(':');
